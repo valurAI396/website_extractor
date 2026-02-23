@@ -22,17 +22,33 @@ export async function createClientDocument(data: DocumentData): Promise<{ docUrl
 
   let credentials
   try {
+    // First, try the standard JSON parse
     credentials = JSON.parse(credentialsJson)
+
+    // Ensure the private key has actual linebreaks, not literal "\n" strings
+    if (credentials.private_key) {
+      credentials.private_key = credentials.private_key.replace(/\\n/g, '\n')
+    }
   } catch (parseError) {
-    console.warn('Initial JSON parse failed. Attempting to sanitize newlines in credentials...')
+    console.warn('Initial JSON parse failed. Using robust Regex extraction for Google Credentials...')
     try {
-      // Often when pasting JSON into .env files, the \n in the private_key gets parsed
-      // into literal line breaks, which breaks JSON.parse(). We escape them back.
-      const sanitizedJson = credentialsJson.replace(/\n/g, '\\n').replace(/\r/g, '\\r')
-      credentials = JSON.parse(sanitizedJson)
+      // If the environment mangles the JSON (e.g., actual newlines in string, missing quotes, trailing commas)
+      // we bypass JSON.parse entirely and just pull the two fields we actually need to authenticate.
+      const emailMatch = credentialsJson.match(/"client_email"\s*:\s*"([^"]+)"/)
+      const keyMatch = credentialsJson.match(/"private_key"\s*:\s*"([^"]+)"/)
+
+      if (!emailMatch || !keyMatch) {
+        throw new Error('Não foi possível encontrar client_email ou private_key no JSON.')
+      }
+
+      credentials = {
+        client_email: emailMatch[1],
+        // Force replace literal "\n" strings into actual newline characters for the PEM key
+        private_key: keyMatch[1].replace(/\\n/g, '\n')
+      }
     } catch (secondError) {
-      console.error('Failed to parse GOOGLE_CREDENTIALS even after sanitization.')
-      throw new Error('Formato GOOGLE_CREDENTIALS inválido. Verifique se copiou o JSON corretamente para o ficheiro .env. O erro exato foi: ' + (secondError as Error).message)
+      console.error('Failed completely to parse GOOGLE_CREDENTIALS.')
+      throw new Error('Formato GOOGLE_CREDENTIALS inválido. Certifique-se de que o ficheiro .env contém o client_email e private_key intactos. Erro interno: ' + (secondError as Error).message)
     }
   }
 
