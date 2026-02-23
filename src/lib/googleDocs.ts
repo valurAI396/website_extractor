@@ -51,11 +51,19 @@ export async function createClientDocument(data: DocumentData): Promise<{ docUrl
 
   // Create the document via the Drive API (this often bypasses strict Docs API '403 Permission Denied'
   // errors for new Service Accounts by correctly initializing their internal root drive first)
+  const fileMetadata: any = {
+    name: `${data.projectName} — Informações para o Website`,
+    mimeType: 'application/vnd.google-apps.document',
+  }
+
+  // If the Service Account is hitting a "Drive storage quota exceeded" error (often 0 bytes on free tier),
+  // they MUST use a shared folder from a personal Workspace/Gmail account.
+  if (process.env.GOOGLE_DRIVE_FOLDER_ID) {
+    fileMetadata.parents = [process.env.GOOGLE_DRIVE_FOLDER_ID]
+  }
+
   const createResponse = await drive.files.create({
-    requestBody: {
-      name: `${data.projectName} — Informações para o Website`,
-      mimeType: 'application/vnd.google-apps.document',
-    },
+    requestBody: fileMetadata,
   })
 
   // id is mapped differently between Docs and Drive API responses
