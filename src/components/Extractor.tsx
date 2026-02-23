@@ -23,10 +23,10 @@ export default function Extractor({ onLogout }: ExtractorProps) {
   const [files, setFiles] = useState<File[]>([])
   const [previews, setPreviews] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
+  const [generatingDoc, setGeneratingDoc] = useState(false)
   const [result, setResult] = useState<ExtractionResult | null>(null)
   const [error, setError] = useState('')
   const [projectName, setProjectName] = useState('')
-  const [generatingDoc, setGeneratingDoc] = useState(false)
   const [docUrl, setDocUrl] = useState<string | null>(null)
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,6 +56,7 @@ export default function Extractor({ onLogout }: ExtractorProps) {
     setLoading(true)
     setError('')
     setResult(null)
+    setDocUrl(null)
 
     try {
       const formData = new FormData()
@@ -84,6 +85,40 @@ export default function Extractor({ onLogout }: ExtractorProps) {
     }
   }
 
+  const handleGenerateDoc = async () => {
+    if (!result) return
+
+    setGeneratingDoc(true)
+    setError('')
+
+    try {
+      const res = await fetch('/api/generate-doc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectName: result.projectName,
+          sections: result.sections,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Erro ao gerar documento')
+      }
+
+      const data = await res.json()
+      setDocUrl(data.docUrl)
+      
+      // Open in new tab
+      window.open(data.docUrl, '_blank')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao gerar documento')
+      console.error(err)
+    } finally {
+      setGeneratingDoc(false)
+    }
+  }
+
   const copyToClipboard = () => {
     if (!result) return
     
@@ -109,38 +144,6 @@ export default function Extractor({ onLogout }: ExtractorProps) {
     setError('')
     setProjectName('')
     setDocUrl(null)
-  }
-
-  const generateGoogleDoc = async () => {
-    if (!result) return
-    
-    setGeneratingDoc(true)
-    setError('')
-
-    try {
-      const res = await fetch('/api/generate-doc', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectName: result.projectName,
-          sections: result.sections,
-        }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Erro ao gerar documento')
-      }
-
-      const data = await res.json()
-      setDocUrl(data.docUrl)
-      window.open(data.docUrl, '_blank')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao gerar documento')
-      console.error(err)
-    } finally {
-      setGeneratingDoc(false)
-    }
   }
 
   return (
@@ -252,18 +255,15 @@ export default function Extractor({ onLogout }: ExtractorProps) {
           </>
         ) : (
           <>
-            {/* Results */}
-            <div className="mb-6 flex items-center justify-between">
+            {/* Results Header */}
+            <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-white">{result.projectName}</h2>
-                <p className="text-gray-400 text-sm">
-                  {result.sections.length} secções extraídas
-                  {docUrl && <span className="text-green-400 ml-2">• Documento criado!</span>}
-                </p>
+                <p className="text-gray-400 text-sm">{result.sections.length} secções extraídas</p>
               </div>
-              <div className="flex gap-3 flex-wrap">
+              <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={generateGoogleDoc}
+                  onClick={handleGenerateDoc}
                   disabled={generatingDoc}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-medium rounded-lg transition-colors text-sm flex items-center gap-2"
                 >
@@ -276,22 +276,12 @@ export default function Extractor({ onLogout }: ExtractorProps) {
                       A gerar...
                     </>
                   ) : (
-                    '📄 Gerar Google Doc'
+                    <>📄 Gerar Google Doc</>
                   )}
                 </button>
-                {docUrl && (
-                  <a
-                    href={docUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors text-sm"
-                  >
-                    🔗 Abrir Documento
-                  </a>
-                )}
                 <button
                   onClick={copyToClipboard}
-                  className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors text-sm"
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors text-sm"
                 >
                   📋 Copiar Texto
                 </button>
@@ -303,6 +293,28 @@ export default function Extractor({ onLogout }: ExtractorProps) {
                 </button>
               </div>
             </div>
+
+            {/* Doc URL */}
+            {docUrl && (
+              <div className="mb-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                <p className="text-green-400 font-medium mb-2">✅ Documento criado com sucesso!</p>
+                <a
+                  href={docUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:text-blue-300 underline break-all"
+                >
+                  {docUrl}
+                </a>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400">
+                {error}
+              </div>
+            )}
 
             {/* Sections */}
             <div className="space-y-4">
