@@ -427,37 +427,53 @@ export default function Extractor({ onLogout }: ExtractorProps) {
                   </Alert>
                 )}
 
-                {/* Results Grid - matches the image's folder/card look */}
-                <div>
-                  <h3 className="text-sm font-semibold mb-4 text-muted-foreground">Secções Extraídas</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {/* Results List - Reader Friendly View */}
+                <div className="bg-card border border-border/50 rounded-2xl shadow-sm max-w-4xl mx-auto overflow-hidden">
+                  <div className="bg-secondary/20 border-b border-border/50 p-4 sm:p-6 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Visão de Documento
+                    </h3>
+                  </div>
+                  <div className="p-6 sm:p-10 space-y-12">
                     {result.sections.map((section, index) => (
-                      <div key={index} className="flex flex-col rounded-2xl bg-card border border-border/50 p-5 hover:border-border transition-colors group">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="w-10 h-10 rounded-xl bg-secondary/50 flex items-center justify-center border border-border/50">
-                            <FileText className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
-                          </div>
-                          <Badge variant="outline" className="bg-secondary/20 text-xs font-normal border-border/50">
+                      <div key={index} className="group relative">
+                        {/* Subtle highlight line on hover */}
+                        <div className="absolute -left-6 sm:-left-10 top-0 w-1 h-0 bg-primary/40 group-hover:h-full transition-all duration-300 rounded-r-md"></div>
+
+                        <div className="flex items-center gap-3 mb-4">
+                          <Badge variant="secondary" className="bg-secondary/50 hover:bg-secondary text-xs font-medium text-foreground transition-colors border-transparent">
                             {section.page}
                           </Badge>
-                        </div>
-                        <div className="mb-4">
-                          <h4 className="font-semibold text-lg line-clamp-1">{section.section}</h4>
-                          <p className="text-xs text-muted-foreground mt-1 line-clamp-1">📍 {section.location}</p>
-                        </div>
-
-                        <div className="flex-1 bg-secondary/20 rounded-xl p-3 mb-4 border border-border/30 max-h-32 overflow-y-auto">
-                          <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap">{section.text}</pre>
+                          <div className="h-1 w-1 rounded-full bg-border"></div>
+                          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                            📍 {section.location}
+                          </span>
                         </div>
 
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => copySection(section.text)}
-                          className="w-full bg-secondary hover:bg-secondary/80 border border-border/50 h-9 rounded-lg"
-                        >
-                          <Copy className="h-3.5 w-3.5 mr-2" /> Copiar Secção
-                        </Button>
+                        <div className="flex flex-col sm:flex-row items-start justify-between gap-6">
+                          <div className="flex-1 space-y-3 w-full">
+                            <h4 className="font-bold text-xl sm:text-2xl text-foreground tracking-tight">{section.section}</h4>
+                            <div className="text-foreground/80 leading-relaxed text-sm sm:text-base">
+                              <pre className="font-sans whitespace-pre-wrap font-normal overflow-hidden break-words w-full">{section.text}</pre>
+                            </div>
+                          </div>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => copySection(section.text)}
+                            className="sm:opacity-0 group-hover:opacity-100 transition-opacity bg-background hover:bg-secondary h-9 w-full sm:w-auto shrink-0 mt-2 sm:mt-1 border-border/50"
+                            title="Copiar Secção"
+                          >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copiar Secção
+                          </Button>
+                        </div>
+
+                        {index < result.sections.length - 1 && (
+                          <Separator className="mt-12 bg-border/40" />
+                        )}
                       </div>
                     ))}
                   </div>

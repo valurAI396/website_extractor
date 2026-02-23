@@ -20,7 +20,21 @@ export async function createClientDocument(data: DocumentData): Promise<{ docUrl
     throw new Error('GOOGLE_CREDENTIALS not configured')
   }
 
-  const credentials = JSON.parse(credentialsJson)
+  let credentials
+  try {
+    credentials = JSON.parse(credentialsJson)
+  } catch (parseError) {
+    console.warn('Initial JSON parse failed. Attempting to sanitize newlines in credentials...')
+    try {
+      // Often when pasting JSON into .env files, the \n in the private_key gets parsed
+      // into literal line breaks, which breaks JSON.parse(). We escape them back.
+      const sanitizedJson = credentialsJson.replace(/\n/g, '\\n').replace(/\r/g, '\\r')
+      credentials = JSON.parse(sanitizedJson)
+    } catch (secondError) {
+      console.error('Failed to parse GOOGLE_CREDENTIALS even after sanitization.')
+      throw new Error('Formato GOOGLE_CREDENTIALS inválido. Verifique se copiou o JSON corretamente para o ficheiro .env. O erro exato foi: ' + (secondError as Error).message)
+    }
+  }
 
   // Create auth client
   const auth = new google.auth.GoogleAuth({
@@ -42,7 +56,7 @@ export async function createClientDocument(data: DocumentData): Promise<{ docUrl
   })
 
   const documentId = createResponse.data.documentId!
-  
+
   // Build the document content
   const requests: any[] = []
   let currentIndex = 1
@@ -74,7 +88,7 @@ export async function createClientDocument(data: DocumentData): Promise<{ docUrl
   // Title
   addText(`${data.projectName}\n`, true, 24)
   addText('Informações para o Website\n\n', false, 14)
-  
+
   // Instructions
   addText('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n', false, 11)
   addText('INSTRUÇÕES\n', true, 14)
