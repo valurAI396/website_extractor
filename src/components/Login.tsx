@@ -1,6 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Loader2, KeyRound } from 'lucide-react'
 
 interface LoginProps {
   onSuccess: () => void
@@ -36,38 +42,55 @@ export default function Login({ onSuccess }: LoginProps) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white mb-2">Website Extractor</h1>
-          <p className="text-gray-400 text-sm">Whenevr Internal Tool</p>
-        </div>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
-              autoFocus
-            />
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+      <Card className="w-full max-w-md shadow-lg border-primary/10">
+        <CardHeader className="space-y-1 items-center pb-8 pt-8">
+          <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+            <KeyRound className="w-6 h-6 text-primary" />
           </div>
-          
-          {error && (
-            <p className="text-red-400 text-sm text-center">{error}</p>
-          )}
-          
-          <button
-            type="submit"
-            disabled={loading || !password}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
-          >
-            {loading ? 'A verificar...' : 'Entrar'}
-          </button>
+          <CardTitle className="text-2xl font-bold tracking-tight">Website Extractor</CardTitle>
+          <CardDescription className="text-center">
+            Whenevr Internal Tool
+          </CardDescription>
+        </CardHeader>
+        <form onSubmit={handleSubmit}>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="password">Palavra-passe</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Introduza a sua password"
+                autoFocus
+                disabled={loading}
+              />
+            </div>
+            {error && (
+              <Alert variant="destructive" className="py-2 px-3">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+          <CardFooter className="pb-8">
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loading || !password}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  A verificar...
+                </>
+              ) : (
+                'Entrar'
+              )}
+            </Button>
+          </CardFooter>
         </form>
-      </div>
+      </Card>
     </div>
   )
 }

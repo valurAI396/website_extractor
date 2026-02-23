@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`Generating Google Doc for: ${projectName}`)
 
+
     const result = await createClientDocument({
       projectName,
       sections,

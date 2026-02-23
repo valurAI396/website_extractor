@@ -11,7 +11,6 @@ interface ExtractedSection {
 type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
 
 export async function POST(request: NextRequest) {
-  // Check API key first
   if (!process.env.ANTHROPIC_API_KEY) {
     console.error('ANTHROPIC_API_KEY not configured')
     return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
@@ -25,28 +24,28 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const projectName = formData.get('projectName') as string || 'Website'
     const fileCount = parseInt(formData.get('fileCount') as string) || 0
-    
+
     console.log(`Processing ${fileCount} files for project: ${projectName}`)
-    
+
     if (fileCount === 0) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 })
     }
 
     // Process all images
     const imageContents: Anthropic.ImageBlockParam[] = []
-    
+
     for (let i = 0; i < fileCount; i++) {
       const file = formData.get(`file${i}`) as File
       if (!file) {
         console.log(`File ${i} not found`)
         continue
       }
-      
+
       console.log(`Processing file ${i}: ${file.name}, type: ${file.type}, size: ${file.size}`)
-      
+
       const bytes = await file.arrayBuffer()
       const base64 = Buffer.from(bytes).toString('base64')
-      
+
       // Map file type to allowed media types
       let mediaType: ImageMediaType = 'image/png'
       if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
@@ -58,7 +57,7 @@ export async function POST(request: NextRequest) {
       } else if (file.type === 'image/webp') {
         mediaType = 'image/webp'
       }
-      
+
       imageContents.push({
         type: 'image',
         source: {
@@ -72,6 +71,8 @@ export async function POST(request: NextRequest) {
     if (imageContents.length === 0) {
       return NextResponse.json({ error: 'No valid images found' }, { status: 400 })
     }
+
+
 
     console.log(`Calling Claude with ${imageContents.length} images`)
 
@@ -108,7 +109,7 @@ Responde APENAS com um JSON válido no seguinte formato (sem markdown, sem \`\`\
 
     // Call Claude Vision
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-3-5-sonnet-20241022',
       max_tokens: 8000,
       messages: [
         {
