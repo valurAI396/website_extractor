@@ -26,6 +26,8 @@ export default function Extractor({ onLogout }: ExtractorProps) {
   const [result, setResult] = useState<ExtractionResult | null>(null)
   const [error, setError] = useState('')
   const [projectName, setProjectName] = useState('')
+  const [generatingDoc, setGeneratingDoc] = useState(false)
+  const [docUrl, setDocUrl] = useState<string | null>(null)
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || [])
@@ -106,6 +108,39 @@ export default function Extractor({ onLogout }: ExtractorProps) {
     setResult(null)
     setError('')
     setProjectName('')
+    setDocUrl(null)
+  }
+
+  const generateGoogleDoc = async () => {
+    if (!result) return
+    
+    setGeneratingDoc(true)
+    setError('')
+
+    try {
+      const res = await fetch('/api/generate-doc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectName: result.projectName,
+          sections: result.sections,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Erro ao gerar documento')
+      }
+
+      const data = await res.json()
+      setDocUrl(data.docUrl)
+      window.open(data.docUrl, '_blank')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao gerar documento')
+      console.error(err)
+    } finally {
+      setGeneratingDoc(false)
+    }
   }
 
   return (
@@ -221,14 +256,44 @@ export default function Extractor({ onLogout }: ExtractorProps) {
             <div className="mb-6 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold text-white">{result.projectName}</h2>
-                <p className="text-gray-400 text-sm">{result.sections.length} secções extraídas</p>
+                <p className="text-gray-400 text-sm">
+                  {result.sections.length} secções extraídas
+                  {docUrl && <span className="text-green-400 ml-2">• Documento criado!</span>}
+                </p>
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-3 flex-wrap">
+                <button
+                  onClick={generateGoogleDoc}
+                  disabled={generatingDoc}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-medium rounded-lg transition-colors text-sm flex items-center gap-2"
+                >
+                  {generatingDoc ? (
+                    <>
+                      <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      A gerar...
+                    </>
+                  ) : (
+                    '📄 Gerar Google Doc'
+                  )}
+                </button>
+                {docUrl && (
+                  <a
+                    href={docUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors text-sm"
+                  >
+                    🔗 Abrir Documento
+                  </a>
+                )}
                 <button
                   onClick={copyToClipboard}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors text-sm"
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors text-sm"
                 >
-                  📋 Copiar Tudo
+                  📋 Copiar Texto
                 </button>
                 <button
                   onClick={reset}
