@@ -12,6 +12,8 @@ interface ExtractedSection {
   text: string
 }
 
+type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
@@ -23,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Process all images
-    const imageContents: { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }[] = []
+    const imageContents: Anthropic.ImageBlockParam[] = []
     
     for (let i = 0; i < fileCount; i++) {
       const file = formData.get(`file${i}`) as File
@@ -31,7 +33,18 @@ export async function POST(request: NextRequest) {
       
       const bytes = await file.arrayBuffer()
       const base64 = Buffer.from(bytes).toString('base64')
-      const mediaType = file.type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+      
+      // Map file type to allowed media types
+      let mediaType: ImageMediaType = 'image/png'
+      if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
+        mediaType = 'image/jpeg'
+      } else if (file.type === 'image/png') {
+        mediaType = 'image/png'
+      } else if (file.type === 'image/gif') {
+        mediaType = 'image/gif'
+      } else if (file.type === 'image/webp') {
+        mediaType = 'image/webp'
+      }
       
       imageContents.push({
         type: 'image',
@@ -43,18 +56,9 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Call Claude Vision
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 8000,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            ...imageContents,
-            {
-              type: 'text',
-              text: `Analisa estas ${fileCount} screenshots de um protótipo de website.
+    const textBlock: Anthropic.TextBlockParam = {
+      type: 'text',
+      text: `Analisa estas ${fileCount} screenshots de um protótipo de website.
 
 Para cada screenshot (tratando cada imagem como uma página diferente, numeradas sequencialmente como Página 1, Página 2, etc.), extrai TODO o texto visível e organiza-o por secções.
 
@@ -81,8 +85,16 @@ Responde APENAS com um JSON válido no seguinte formato (sem markdown, sem \`\`\
     }
   ]
 }`,
-            },
-          ],
+    }
+
+    // Call Claude Vision
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      messages: [
+        {
+          role: 'user',
+          content: [...imageContents, textBlock],
         },
       ],
     })
