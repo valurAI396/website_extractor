@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
 interface ExtractedSection {
   page: string
   section: string
@@ -15,10 +11,22 @@ interface ExtractedSection {
 type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
 
 export async function POST(request: NextRequest) {
+  // Check API key first
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.error('ANTHROPIC_API_KEY not configured')
+    return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
+  }
+
+  const anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  })
+
   try {
     const formData = await request.formData()
     const projectName = formData.get('projectName') as string || 'Website'
     const fileCount = parseInt(formData.get('fileCount') as string) || 0
+    
+    console.log(`Processing ${fileCount} files for project: ${projectName}`)
     
     if (fileCount === 0) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 })
@@ -29,7 +37,12 @@ export async function POST(request: NextRequest) {
     
     for (let i = 0; i < fileCount; i++) {
       const file = formData.get(`file${i}`) as File
-      if (!file) continue
+      if (!file) {
+        console.log(`File ${i} not found`)
+        continue
+      }
+      
+      console.log(`Processing file ${i}: ${file.name}, type: ${file.type}, size: ${file.size}`)
       
       const bytes = await file.arrayBuffer()
       const base64 = Buffer.from(bytes).toString('base64')
@@ -56,9 +69,15 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    if (imageContents.length === 0) {
+      return NextResponse.json({ error: 'No valid images found' }, { status: 400 })
+    }
+
+    console.log(`Calling Claude with ${imageContents.length} images`)
+
     const textBlock: Anthropic.TextBlockParam = {
       type: 'text',
-      text: `Analisa estas ${fileCount} screenshots de um protótipo de website.
+      text: `Analisa estas ${imageContents.length} screenshots de um protótipo de website.
 
 Para cada screenshot (tratando cada imagem como uma página diferente, numeradas sequencialmente como Página 1, Página 2, etc.), extrai TODO o texto visível e organiza-o por secções.
 
@@ -99,6 +118,8 @@ Responde APENAS com um JSON válido no seguinte formato (sem markdown, sem \`\`\
       ],
     })
 
+    console.log('Claude response received')
+
     // Parse the response
     const textContent = response.content.find(c => c.type === 'text')
     if (!textContent || textContent.type !== 'text') {
@@ -115,6 +136,7 @@ Responde APENAS com um JSON válido no seguinte formato (sem markdown, sem \`\`\
       }
     } catch (parseError) {
       console.error('Failed to parse Claude response:', parseError)
+      console.log('Raw response:', textContent.text)
       // Fallback: return raw text as a single section
       sections = [{
         page: 'Todas',
@@ -124,6 +146,8 @@ Responde APENAS com um JSON válido no seguinte formato (sem markdown, sem \`\`\
       }]
     }
 
+    console.log(`Extracted ${sections.length} sections`)
+
     return NextResponse.json({
       projectName,
       extractedAt: new Date().toLocaleString('pt-PT'),
@@ -132,8 +156,9 @@ Responde APENAS com um JSON válido no seguinte formato (sem markdown, sem \`\`\
 
   } catch (error) {
     console.error('Extraction error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
-      { error: 'Failed to extract text' },
+      { error: `Failed to extract: ${errorMessage}` },
       { status: 500 }
     )
   }
