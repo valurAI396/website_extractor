@@ -49,14 +49,17 @@ export async function createClientDocument(data: DocumentData): Promise<{ docUrl
   const docs = google.docs({ version: 'v1', auth })
   const drive = google.drive({ version: 'v3', auth })
 
-  // Create the document
-  const createResponse = await docs.documents.create({
+  // Create the document via the Drive API (this often bypasses strict Docs API '403 Permission Denied'
+  // errors for new Service Accounts by correctly initializing their internal root drive first)
+  const createResponse = await drive.files.create({
     requestBody: {
-      title: `${data.projectName} — Informações para o Website`,
+      name: `${data.projectName} — Informações para o Website`,
+      mimeType: 'application/vnd.google-apps.document',
     },
   })
 
-  const documentId = createResponse.data.documentId!
+  // id is mapped differently between Docs and Drive API responses
+  const documentId = createResponse.data.id!
 
   // Build the document content
   const requests: any[] = []
