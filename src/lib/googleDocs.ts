@@ -23,9 +23,14 @@ export async function createClientDocument(data: DocumentData): Promise<{ docUrl
     throw new Error('As variáveis de ambiente do Google (GOOGLE_CLIENT_EMAIL e GOOGLE_PRIVATE_KEY) não estão configuradas corretamente no Vercel.')
   }
 
-  // Ensure the private key always uses real linebreaks and doesn't get stringified by the server
   // Vercel sometimes double-escapes them, so we catch both \n and \\n
-  const formattedPrivateKey = privateKeyRaw.replace(/\\n/g, '\n')
+  let formattedPrivateKey = privateKeyRaw.replace(/\\n/g, '\n')
+
+  // Node's crypto library strict checks the PEM headers.
+  // If the user copied the key without the BEGIN/END tags, we must wrap it.
+  if (!formattedPrivateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+    formattedPrivateKey = `-----BEGIN PRIVATE KEY-----\n${formattedPrivateKey}\n-----END PRIVATE KEY-----\n`
+  }
 
   const credentials = {
     client_email: clientEmail,
