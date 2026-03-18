@@ -44,7 +44,7 @@ export default function Extractor({ onLogout }: ExtractorProps) {
 
   const pages = useMemo(() => {
     if (!result) return []
-    return [...new Set(result.sections.map((s: ExtractedSection) => s.page))]
+    return Array.from(new Set(result.sections.map((s: ExtractedSection) => s.page)))
   }, [result])
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
