@@ -1,26 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
-function extractTextFromHtml(html: string): string {
-    return html
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-        .replace(/<iframe[\s\S]*?<\/iframe>/gi, ' ')
-        .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
-        .replace(/<\/?(div|p|br|h[1-6]|li|tr|td|th|section|article|header|footer|nav|main|aside)[^>]*>/gi, '\n')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&nbsp;/g, ' ')
-        .replace(/[ \t]+/g, ' ')
-        .replace(/\n\s*\n+/g, '\n')
-        .trim()
-}
-
 export async function POST(request: NextRequest) {
     if (!process.env.ANTHROPIC_API_KEY) {
         return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
@@ -37,19 +17,20 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No URL provided' }, { status: 400 })
         }
 
-        console.log(`Fetching URL: ${url}`)
-        const targetResponse = await fetch(url, {
+        // Use Jina Reader to get fully-rendered page content (handles JS/SPA sites)
+        console.log(`Fetching URL via Jina Reader: ${url}`)
+        const readerResponse = await fetch(`https://r.jina.ai/${url}`, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
+                'Accept': 'text/plain',
+                'X-Return-Format': 'markdown',
+            },
         })
 
-        if (!targetResponse.ok) {
-            throw new Error(`Failed to fetch URL: ${targetResponse.statusText}`)
+        if (!readerResponse.ok) {
+            throw new Error(`Failed to fetch URL: ${readerResponse.statusText}`)
         }
 
-        const html = await targetResponse.text()
-        const pageText = extractTextFromHtml(html)
+        const pageText = await readerResponse.text()
         const truncatedText = pageText.slice(0, 150000)
 
         console.log(`Calling Claude with URL content (length: ${truncatedText.length})`)
