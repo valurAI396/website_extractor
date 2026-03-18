@@ -10,36 +10,23 @@ interface Section {
 interface DocumentData {
   projectName: string
   sections: Section[]
-  clientEmail?: string
 }
 
 export async function createClientDocument(data: DocumentData): Promise<{ docUrl: string; docId: string }> {
-  // Rather than parsing a huge JSON string (which routinely breaks on Vercel),
-  // we rely on two explicit environment variables
   const clientEmail = process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL_FALLBACK
   const privateKeyRaw = process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY_FALLBACK
 
   if (!clientEmail || !privateKeyRaw) {
-    throw new Error('As variáveis de ambiente do Google (GOOGLE_CLIENT_EMAIL e GOOGLE_PRIVATE_KEY) não estão configuradas corretamente no Vercel.')
+    throw new Error('As variáveis de ambiente do Google (GOOGLE_CLIENT_EMAIL e GOOGLE_PRIVATE_KEY) não estão configuradas corretamente.')
   }
 
-  // Vercel sometimes double-escapes them, so we catch both \n and \\n
   let formattedPrivateKey = privateKeyRaw.replace(/\\n/g, '\n')
-
-  // Node's crypto library strict checks the PEM headers.
-  // If the user copied the key without the BEGIN/END tags, we must wrap it.
   if (!formattedPrivateKey.includes('-----BEGIN PRIVATE KEY-----')) {
     formattedPrivateKey = `-----BEGIN PRIVATE KEY-----\n${formattedPrivateKey}\n-----END PRIVATE KEY-----\n`
   }
 
-  const credentials = {
-    client_email: clientEmail,
-    private_key: formattedPrivateKey,
-  }
-
-  // Create auth client
   const auth = new google.auth.GoogleAuth({
-    credentials,
+    credentials: { client_email: clientEmail, private_key: formattedPrivateKey },
     scopes: [
       'https://www.googleapis.com/auth/documents',
       'https://www.googleapis.com/auth/drive',
@@ -49,146 +36,226 @@ export async function createClientDocument(data: DocumentData): Promise<{ docUrl
   const docs = google.docs({ version: 'v1', auth })
   const drive = google.drive({ version: 'v3', auth })
 
-  // Create the document via the Drive API (this often bypasses strict Docs API '403 Permission Denied'
-  // errors for new Service Accounts by correctly initializing their internal root drive first)
   const fileMetadata: any = {
-    name: `${data.projectName} — Informações para o Website`,
+    name: `${data.projectName} — Conteúdo do Website`,
     mimeType: 'application/vnd.google-apps.document',
   }
-
-  // If the Service Account is hitting a "Drive storage quota exceeded" error (often 0 bytes on free tier),
-  // they MUST use a shared folder from a personal Workspace/Gmail account.
   if (process.env.GOOGLE_DRIVE_FOLDER_ID) {
     fileMetadata.parents = [process.env.GOOGLE_DRIVE_FOLDER_ID]
   }
 
-  const createResponse = await drive.files.create({
-    requestBody: fileMetadata,
-  })
-
-  // id is mapped differently between Docs and Drive API responses
+  const createResponse = await drive.files.create({ requestBody: fileMetadata })
   const documentId = createResponse.data.id!
 
-  // Build the document content
   const requests: any[] = []
-  let currentIndex = 1
+  let idx = 1
 
-  // Helper to add text
-  const addText = (text: string, bold = false, fontSize = 11) => {
-    const endIndex = currentIndex + text.length
+  const insert = (text: string) => {
+    requests.push({ insertText: { location: { index: idx }, text } })
+    idx += text.length
+  }
+
+  const style = (start: number, end: number, opts: {
+    bold?: boolean
+    fontSize?: number
+    italic?: boolean
+    rgb?: { red: number; green: number; blue: number }
+  }) => {
+    const textStyle: any = {}
+    const fields: string[] = []
+    if (opts.bold !== undefined) { textStyle.bold = opts.bold; fields.push('bold') }
+    if (opts.fontSize !== undefined) { textStyle.fontSize = { magnitude: opts.fontSize, unit: 'PT' }; fields.push('fontSize') }
+    if (opts.italic !== undefined) { textStyle.italic = opts.italic; fields.push('italic') }
+    if (opts.rgb) { textStyle.foregroundColor = { color: { rgbColor: opts.rgb } }; fields.push('foregroundColor') }
     requests.push({
-      insertText: {
-        location: { index: currentIndex },
-        text: text,
+      updateTextStyle: {
+        range: { startIndex: start, endIndex: end },
+        textStyle,
+        fields: fields.join(','),
       },
     })
-    if (bold || fontSize !== 11) {
-      requests.push({
-        updateTextStyle: {
-          range: { startIndex: currentIndex, endIndex },
-          textStyle: {
-            bold: bold,
-            fontSize: { magnitude: fontSize, unit: 'PT' },
-          },
-          fields: bold ? 'bold,fontSize' : 'fontSize',
-        },
-      })
-    }
-    currentIndex = endIndex
   }
 
-  // Title
-  addText(`${data.projectName}\n`, true, 24)
-  addText('Informações para o Website\n\n', false, 14)
+  const heading = (start: number, end: number, level: 1 | 2 | 3 | 4) => {
+    requests.push({
+      updateParagraphStyle: {
+        range: { startIndex: start, endIndex: end },
+        paragraphStyle: { namedStyleType: `HEADING_${level}` },
+        fields: 'namedStyleType',
+      },
+    })
+  }
 
-  // Instructions
-  addText('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n', false, 11)
-  addText('INSTRUÇÕES\n', true, 14)
-  addText('Este documento contém todos os textos do seu website. Por favor:\n', false, 11)
-  addText('1. Reveja cada secção e edite o texto conforme necessário\n', false, 11)
-  addText('2. Substitua os textos de exemplo pelos seus textos reais\n', false, 11)
-  addText('3. Preencha as secções de imagens e domínio no final\n\n', false, 11)
-  addText('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n', false, 11)
+  // ── Document Title ──────────────────────────────────────────────────────────
+  let s = idx
+  insert(`${data.projectName}\n`)
+  heading(s, idx, 1)
 
-  // Sections from extraction
-  addText('📝 TEXTOS DO WEBSITE\n\n', true, 16)
+  s = idx
+  insert(`Conteúdo do Website  ·  Extraído em ${new Date().toLocaleDateString('pt-PT')}\n\n`)
+  style(s, idx, { fontSize: 11, italic: true, rgb: { red: 0.4, green: 0.4, blue: 0.4 } })
 
+  // ── Instructions ────────────────────────────────────────────────────────────
+  s = idx
+  insert('Instruções\n')
+  heading(s, idx, 2)
+
+  s = idx
+  insert('Este documento contém todo o texto extraído do website, organizado por página e secção. Por favor:\n\n')
+  style(s, idx, { fontSize: 11 })
+
+  for (const line of [
+    '1. Reveja cada secção e edite o texto conforme necessário',
+    '2. Substitua os textos de exemplo pelos textos reais e corretos',
+    '3. Preencha as secções de imagens, domínio e contactos no final',
+  ]) {
+    s = idx
+    insert(`${line}\n`)
+    style(s, idx, { fontSize: 11 })
+  }
+  insert('\n')
+
+  // ── Website Content (grouped by page) ───────────────────────────────────────
+  s = idx
+  insert('Conteúdo por Página\n')
+  heading(s, idx, 2)
+  insert('\n')
+
+  const pageGroups = new Map<string, Section[]>()
   for (const section of data.sections) {
-    addText(`${section.section}\n`, true, 13)
-    addText(`📍 Localização: ${section.location}\n`, false, 10)
-    addText(`📄 Página: ${section.page}\n\n`, false, 10)
-    addText(`${section.text}\n\n`, false, 11)
-    addText('---\n\n', false, 11)
+    const page = section.page || 'Geral'
+    if (!pageGroups.has(page)) pageGroups.set(page, [])
+    pageGroups.get(page)!.push(section)
   }
 
-  // Images section
-  addText('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n', false, 11)
-  addText('🖼️ IMAGENS NECESSÁRIAS\n\n', true, 16)
-  addText('Por favor envie as seguintes imagens:\n\n', false, 11)
-  addText('☐ Logo da empresa (PNG com fundo transparente, alta qualidade)\n\n', false, 11)
-  addText('☐ Foto do proprietário/equipa\n\n', false, 11)
-  addText('☐ Fotos do espaço/estabelecimento (mínimo 3)\n\n', false, 11)
-  addText('☐ Fotos dos produtos/serviços\n\n', false, 11)
-  addText('☐ Outras imagens relevantes: _______________\n\n', false, 11)
-  addText('\n📧 Envie as imagens para: [email a definir]\n\n', false, 11)
+  for (const [pageName, pageSections] of Array.from(pageGroups.entries())) {
+    // Page name — H3
+    s = idx
+    insert(`${pageName}\n`)
+    heading(s, idx, 3)
+    insert('\n')
 
-  // Domain section
-  addText('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n', false, 11)
-  addText('🌐 DOMÍNIO\n\n', true, 16)
-  addText('Já tem um domínio registado?\n', false, 11)
-  addText('☐ Sim → Qual? _______________\n', false, 11)
-  addText('☐ Não → Que domínio pretende? (ex: suaempresa.pt) _______________\n\n', false, 11)
-  addText('Nota: Podemos ajudar no registo e configuração do domínio.\n\n', false, 11)
+    for (const section of pageSections) {
+      // Section name — H4
+      s = idx
+      insert(`${section.section}\n`)
+      heading(s, idx, 4)
 
-  // Contact info section
-  addText('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n', false, 11)
-  addText('📞 INFORMAÇÕES DE CONTACTO\n\n', true, 16)
-  addText('(Confirme se estão corretas ou preencha)\n\n', false, 11)
-  addText('Email: _______________\n\n', false, 11)
-  addText('Telefone: _______________\n\n', false, 11)
-  addText('WhatsApp: _______________\n\n', false, 11)
-  addText('Morada: _______________\n\n', false, 11)
-  addText('Horário de funcionamento: _______________\n\n', false, 11)
+      // Location (small, muted)
+      s = idx
+      insert(`📍 ${section.location}\n\n`)
+      style(s, idx, { fontSize: 10, italic: true, rgb: { red: 0.5, green: 0.5, blue: 0.5 } })
 
-  // Social media
-  addText('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n', false, 11)
-  addText('📱 REDES SOCIAIS\n\n', true, 16)
-  addText('Instagram: _______________\n\n', false, 11)
-  addText('Facebook: _______________\n\n', false, 11)
-  addText('LinkedIn: _______________\n\n', false, 11)
-  addText('TikTok: _______________\n\n', false, 11)
-  addText('Outras: _______________\n\n', false, 11)
+      // Section text
+      s = idx
+      insert(`${section.text}\n\n`)
+      style(s, idx, { fontSize: 11 })
 
-  // Next steps
-  addText('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n', false, 11)
-  addText('✅ PRÓXIMOS PASSOS\n\n', true, 16)
-  addText('1. Preencha/reveja todos os textos acima\n', false, 11)
-  addText('2. Envie as imagens solicitadas\n', false, 11)
-  addText('3. Confirme o domínio\n', false, 11)
-  addText('4. Nós tratamos do resto!\n\n', false, 11)
-  addText('Prazo de entrega: 24 horas após receção de todos os materiais.\n\n', false, 11)
+      // Divider
+      s = idx
+      insert('─────────────────────────────────────────────────\n\n')
+      style(s, idx, { fontSize: 9, rgb: { red: 0.8, green: 0.8, blue: 0.8 } })
+    }
+  }
 
-  // Footer
-  addText('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', false, 11)
-  addText('Documento gerado automaticamente por Whenevr\n', false, 9)
-  addText(`Data: ${new Date().toLocaleDateString('pt-PT')}\n`, false, 9)
+  // ── Required Images ──────────────────────────────────────────────────────────
+  s = idx
+  insert('Imagens Necessárias\n')
+  heading(s, idx, 2)
 
-  // Apply all updates
-  await docs.documents.batchUpdate({
-    documentId,
-    requestBody: { requests },
-  })
+  s = idx
+  insert('Por favor envie as seguintes imagens:\n\n')
+  style(s, idx, { fontSize: 11 })
 
-  // Make the document accessible (anyone with link can edit)
+  for (const item of [
+    '☐ Logo da empresa (PNG com fundo transparente, alta qualidade)',
+    '☐ Foto do proprietário/equipa',
+    '☐ Fotos do espaço/estabelecimento (mínimo 3)',
+    '☐ Fotos dos produtos/serviços',
+    '☐ Outras imagens relevantes: _______________',
+  ]) {
+    s = idx
+    insert(`${item}\n`)
+    style(s, idx, { fontSize: 11 })
+  }
+
+  s = idx
+  insert('\n📧 Envie as imagens para: [email a definir]\n\n')
+  style(s, idx, { fontSize: 11 })
+
+  // ── Domain ──────────────────────────────────────────────────────────────────
+  s = idx
+  insert('Domínio\n')
+  heading(s, idx, 2)
+
+  for (const line of [
+    'Já tem um domínio registado?\n',
+    '☐ Sim → Qual? _______________\n',
+    '☐ Não → Que domínio pretende? (ex: suaempresa.pt) _______________\n\n',
+  ]) {
+    s = idx
+    insert(line)
+    style(s, idx, { fontSize: 11 })
+  }
+
+  // ── Contact Info ─────────────────────────────────────────────────────────────
+  s = idx
+  insert('Informações de Contacto\n')
+  heading(s, idx, 2)
+
+  s = idx
+  insert('(Confirme ou corrija os seus dados de contacto)\n\n')
+  style(s, idx, { fontSize: 11, italic: true })
+
+  for (const field of ['Email', 'Telefone', 'WhatsApp', 'Morada', 'Horário de funcionamento']) {
+    s = idx
+    insert(`${field}: _______________\n\n`)
+    style(s, idx, { fontSize: 11 })
+  }
+
+  // ── Social Media ─────────────────────────────────────────────────────────────
+  s = idx
+  insert('Redes Sociais\n')
+  heading(s, idx, 2)
+
+  for (const field of ['Instagram', 'Facebook', 'LinkedIn', 'TikTok', 'Outras']) {
+    s = idx
+    insert(`${field}: _______________\n\n`)
+    style(s, idx, { fontSize: 11 })
+  }
+
+  // ── Next Steps ───────────────────────────────────────────────────────────────
+  s = idx
+  insert('Próximos Passos\n')
+  heading(s, idx, 2)
+
+  for (const step of [
+    '1. Preencha/reveja todos os textos acima',
+    '2. Envie as imagens solicitadas',
+    '3. Confirme o domínio pretendido',
+    '4. Nós tratamos do resto!',
+  ]) {
+    s = idx
+    insert(`${step}\n`)
+    style(s, idx, { fontSize: 11 })
+  }
+
+  insert('\n')
+  s = idx
+  insert('Prazo de entrega: 24 horas após receção de todos os materiais.\n\n')
+  style(s, idx, { fontSize: 11, bold: true })
+
+  // ── Footer ───────────────────────────────────────────────────────────────────
+  s = idx
+  insert('Documento gerado automaticamente por Whenevr\n')
+  style(s, idx, { fontSize: 9, italic: true, rgb: { red: 0.6, green: 0.6, blue: 0.6 } })
+
+  await docs.documents.batchUpdate({ documentId, requestBody: { requests } })
+
   await drive.permissions.create({
     fileId: documentId,
-    requestBody: {
-      role: 'writer',
-      type: 'anyone',
-    },
+    requestBody: { role: 'writer', type: 'anyone' },
   })
 
-  const docUrl = `https://docs.google.com/document/d/${documentId}/edit`
-
-  return { docUrl, docId: documentId }
+  return { docUrl: `https://docs.google.com/document/d/${documentId}/edit`, docId: documentId }
 }

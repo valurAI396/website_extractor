@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -41,6 +41,11 @@ export default function Extractor({ onLogout }: ExtractorProps) {
   const [docUrl, setDocUrl] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('image')
   const { toast } = useToast()
+
+  const pages = useMemo(() => {
+    if (!result) return []
+    return [...new Set(result.sections.map((s: ExtractedSection) => s.page))]
+  }, [result])
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || [])
@@ -401,7 +406,7 @@ export default function Extractor({ onLogout }: ExtractorProps) {
                   <div>
                     <h2 className="text-xl font-semibold">{result.projectName}</h2>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {result.sections.length} secções extraídas • {result.extractedAt}
+                      {result.sections.length} secções • {pages.length} {pages.length === 1 ? 'página' : 'páginas'} • {result.extractedAt}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 w-full sm:w-auto">
@@ -427,56 +432,69 @@ export default function Extractor({ onLogout }: ExtractorProps) {
                   </Alert>
                 )}
 
-                {/* Results List - Reader Friendly View */}
+                {/* Results - grouped by page */}
                 <div className="bg-card border border-border/50 rounded-2xl shadow-sm max-w-4xl mx-auto overflow-hidden">
-                  <div className="bg-secondary/20 border-b border-border/50 p-4 sm:p-6 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                      <FileText className="w-4 h-4" />
-                      Visão de Documento
-                    </h3>
-                  </div>
-                  <div className="p-6 sm:p-10 space-y-12">
-                    {result.sections.map((section, index) => (
-                      <div key={index} className="group relative">
-                        {/* Subtle highlight line on hover */}
-                        <div className="absolute -left-6 sm:-left-10 top-0 w-1 h-0 bg-primary/40 group-hover:h-full transition-all duration-300 rounded-r-md"></div>
+                  <Tabs key={result.extractedAt} defaultValue={pages[0] ?? ''}>
+                    <div className="bg-secondary/20 border-b border-border/50 p-4 sm:p-6 space-y-3">
+                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                        <FileText className="w-4 h-4" />
+                        Visão de Documento
+                      </h3>
+                      {pages.length > 1 && (
+                        <TabsList className="flex flex-wrap h-auto gap-1 p-1 bg-secondary/50 rounded-lg w-full justify-start">
+                          {pages.map(page => (
+                            <TabsTrigger key={page} value={page} className="text-xs h-7 rounded-md">
+                              {page}
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                      )}
+                    </div>
 
-                        <div className="flex items-center gap-3 mb-4">
-                          <Badge variant="secondary" className="bg-secondary/50 hover:bg-secondary text-xs font-medium text-foreground transition-colors border-transparent">
-                            {section.page}
-                          </Badge>
-                          <div className="h-1 w-1 rounded-full bg-border"></div>
-                          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                            📍 {section.location}
-                          </span>
-                        </div>
+                    {pages.map(page => {
+                      const pageSections = result.sections.filter(s => s.page === page)
+                      return (
+                        <TabsContent key={page} value={page} className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+                          <div className="p-6 sm:p-10 space-y-12">
+                            {pageSections.map((section, index) => (
+                              <div key={index} className="group relative">
+                                <div className="absolute -left-6 sm:-left-10 top-0 w-1 h-0 bg-primary/40 group-hover:h-full transition-all duration-300 rounded-r-md"></div>
 
-                        <div className="flex flex-col sm:flex-row items-start justify-between gap-6">
-                          <div className="flex-1 space-y-3 w-full">
-                            <h4 className="font-bold text-xl sm:text-2xl text-foreground tracking-tight">{section.section}</h4>
-                            <div className="text-foreground/80 leading-relaxed text-sm sm:text-base">
-                              <pre className="font-sans whitespace-pre-wrap font-normal overflow-hidden break-words w-full">{section.text}</pre>
-                            </div>
+                                <div className="flex items-center gap-2 mb-4">
+                                  <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                                    📍 {section.location}
+                                  </span>
+                                </div>
+
+                                <div className="flex flex-col sm:flex-row items-start justify-between gap-6">
+                                  <div className="flex-1 space-y-3 w-full">
+                                    <h4 className="font-bold text-xl sm:text-2xl text-foreground tracking-tight">{section.section}</h4>
+                                    <div className="text-foreground/80 leading-relaxed text-sm sm:text-base">
+                                      <pre className="font-sans whitespace-pre-wrap font-normal overflow-hidden break-words w-full">{section.text}</pre>
+                                    </div>
+                                  </div>
+
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => copySection(section.text)}
+                                    className="sm:opacity-0 group-hover:opacity-100 transition-opacity bg-background hover:bg-secondary h-9 w-full sm:w-auto shrink-0 mt-2 sm:mt-1 border-border/50"
+                                  >
+                                    <Copy className="h-4 w-4 mr-2" />
+                                    Copiar Secção
+                                  </Button>
+                                </div>
+
+                                {index < pageSections.length - 1 && (
+                                  <Separator className="mt-12 bg-border/40" />
+                                )}
+                              </div>
+                            ))}
                           </div>
-
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => copySection(section.text)}
-                            className="sm:opacity-0 group-hover:opacity-100 transition-opacity bg-background hover:bg-secondary h-9 w-full sm:w-auto shrink-0 mt-2 sm:mt-1 border-border/50"
-                            title="Copiar Secção"
-                          >
-                            <Copy className="h-4 w-4 mr-2" />
-                            Copiar Secção
-                          </Button>
-                        </div>
-
-                        {index < result.sections.length - 1 && (
-                          <Separator className="mt-12 bg-border/40" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                        </TabsContent>
+                      )
+                    })}
+                  </Tabs>
                 </div>
               </div>
             )}
