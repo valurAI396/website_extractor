@@ -1,6 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { JSDOM } from 'jsdom'
+
+function extractTextFromHtml(html: string): string {
+    return html
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+        .replace(/<iframe[\s\S]*?<\/iframe>/gi, ' ')
+        .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+        .replace(/<\/?(div|p|br|h[1-6]|li|tr|td|th|section|article|header|footer|nav|main|aside)[^>]*>/gi, '\n')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n\s*\n+/g, '\n')
+        .trim()
+}
 
 export async function POST(request: NextRequest) {
     if (!process.env.ANTHROPIC_API_KEY) {
@@ -18,8 +37,6 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No URL provided' }, { status: 400 })
         }
 
-
-
         console.log(`Fetching URL: ${url}`)
         const targetResponse = await fetch(url, {
             headers: {
@@ -32,18 +49,7 @@ export async function POST(request: NextRequest) {
         }
 
         const html = await targetResponse.text()
-
-        // Extract text payload
-        const dom = new JSDOM(html)
-        const document = dom.window.document
-
-        // Remove scripts, styles, etc
-        const elementsToRemove = document.querySelectorAll('script, style, noscript, iframe, img, svg')
-        elementsToRemove.forEach(el => el.remove())
-
-        const pageText = document.body.textContent?.replace(/\s+/g, ' ').trim() || ''
-
-        // Truncate to avoid massive payloads (Claude can handle ~200k tokens, but still)
+        const pageText = extractTextFromHtml(html)
         const truncatedText = pageText.slice(0, 150000)
 
         console.log(`Calling Claude with URL content (length: ${truncatedText.length})`)
